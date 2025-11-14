@@ -338,12 +338,7 @@ See [Ollama Models Library](https://ollama.ai/library) for more options.
 docker build -t mlops-backend:latest .
 
 # Run container in background
-docker run -d \
-  -p 8000:8000 \
-  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
-  -e API_KEY=your-secret-api-key-change-this \
-  --name mlops-backend \
-  mlops-backend:latest
+docker run -d -p 8000:8000 -e OLLAMA_BASE_URL=http://127.0.0.1:11434 -e API_KEY=your-secure-api-key-change-this-in-production --name mlops-backend mlops-backend:latest
 
 # View logs in real-time
 docker logs -f mlops-backend

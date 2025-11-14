@@ -26,6 +26,7 @@ async def lifespan(app: FastAPI):
     logger.info("Application starting...")
     logger.info(f"Ollama service configured at: {settings.ollama_base_url}")
     logger.info(f"Authentication enabled: {settings.auth_enabled}")
+    logger.info(f"CORS allowed origins: {settings.allowed_origins}")
     yield
     # Shutdown
     logger.info("Application shutting down...")
