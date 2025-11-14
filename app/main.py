@@ -7,8 +7,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import llm
+from app.routers import llm, simulation
 from app.services.llm.ollama_service import ollama_service
+from app.services.other.simulation.database import init_db
 from app.utils.helpers import setup_logging
 
 
@@ -27,6 +28,27 @@ async def lifespan(app: FastAPI):
     logger.info(f"Ollama service configured at: {settings.ollama_base_url}")
     logger.info(f"Authentication enabled: {settings.auth_enabled}")
     logger.info(f"CORS allowed origins: {settings.allowed_origins}")
+
+    # Initialize simulation database
+    try:
+        init_db()
+        logger.info("Train simulation database initialized")
+
+        # Auto-start simulation
+        from app.services.other.simulation.database import SessionLocal
+        from app.services.other.simulation.simulation_engine import SimulationEngine
+        from datetime import datetime
+
+        db = SessionLocal()
+        try:
+            SimulationEngine.init_simulation(db, datetime.utcnow(), time_scale=60)
+            SimulationEngine.start_simulation(db)
+            logger.info("Train simulation auto-started with time_scale=60")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Failed to initialize/start simulation: {str(e)}")
+
     yield
     # Shutdown
     logger.info("Application shutting down...")
@@ -52,6 +74,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(llm.router)
+app.include_router(simulation.router)
 
 
 # Root endpoint

@@ -172,9 +172,15 @@ All configuration from `pydantic_settings.BaseSettings` in `app/config.py`:
 - **Streaming Format**: NDJSON (newline-delimited JSON) - one JSON object per line
 - **Error Handling**: Exceptions caught and converted to HTTP errors with appropriate status codes
 - **Docker**: Multi-stage Dockerfile for slim final image. Uses Python 3.11-slim base.
+- **Continuous Simulation**: Train simulation automatically starts on app launch and runs continuously with time_scale=60. Cannot be paused, reset, or restarted - only manually stepped forward via `/game/step` endpoint if needed.
+- **Vehicle Endpoints**: Use `/simulation/train/vehicle` for managing any vehicle (locomotive, passenger carriage, freight carriage, etc)
+- **Train Endpoints**: Use `/simulation/train/train` for creating trains and managing train composition with vehicles
+- **Unified Vehicle Model**: All rolling stock is managed through the single `/vehicle` endpoint regardless of type
+- **Simulation Database**: SQLite file (`simulation.db`) persists all train data and state across server restarts
 
 ## API Endpoints Quick Reference
 
+### LLM Service
 - `GET /health` - Basic health check (no auth)
 - `GET /api/llm/health` - LLM service status
 - `GET /api/llm/models` - List available Ollama models
@@ -182,4 +188,71 @@ All configuration from `pydantic_settings.BaseSettings` in `app/config.py`:
 - `POST /api/llm/stream` - Streaming text generation (NDJSON)
 - `GET /` - API info endpoint
 
+### Train Simulation System
+
+**Infrastructure (Tracks)**
+- `POST /simulation/train/infra` - Create track
+- `GET /simulation/train/infra` - List all tracks
+- `GET /simulation/train/infra/{track_id}` - Get track
+- `PUT /simulation/train/infra/{track_id}` - Update track
+- `DELETE /simulation/train/infra/{track_id}` - Delete track
+
+**Stations**
+- `POST /simulation/train/station` - Create station
+- `GET /simulation/train/station` - List all stations
+- `GET /simulation/train/station/{station_id}` - Get station
+- `PUT /simulation/train/station/{station_id}` - Update station
+- `DELETE /simulation/train/station/{station_id}` - Delete station
+
+**Vehicles** (locomotives, passenger carriages, freight carriages, etc)
+- `POST /simulation/train/vehicle` - Create vehicle
+- `GET /simulation/train/vehicle` - List all vehicles
+- `GET /simulation/train/vehicle/{vehicle_id}` - Get vehicle
+- `PUT /simulation/train/vehicle/{vehicle_id}` - Update vehicle
+- `DELETE /simulation/train/vehicle/{vehicle_id}` - Delete vehicle
+- `POST /simulation/train/vehicle/{vehicle_id}/assign-train/{train_id}` - Assign vehicle to train
+
+**Trains**
+- `POST /simulation/train/train` - Create train with vehicle composition
+- `GET /simulation/train/train` - List all trains
+- `GET /simulation/train/train/{train_id}` - Get train with vehicles
+- `PUT /simulation/train/train/{train_id}` - Update train
+- `DELETE /simulation/train/train/{train_id}` - Delete train
+- `POST /simulation/train/train/{train_id}/add-vehicle/{vehicle_id}` - Add vehicle to train
+- `DELETE /simulation/train/train/{train_id}/remove-vehicle/{vehicle_id}` - Remove vehicle from train
+
+**Simulation Control** (Simulation runs continuously from app startup)
+- `GET /simulation/train/game/status` - Get current simulation status and time
+- `GET /simulation/train/game/trains-status` - Get all trains with position, status, delays
+- `GET /simulation/train/game/stations-status` - Get all stations with current train occupancy
+- `POST /simulation/train/game/step?minutes=60` - Manually advance simulation by N minutes (optional)
+
 Interactive API docs: http://localhost:3002/docs (Swagger UI)
+
+## Train Simulation Architecture
+
+### Database Schema
+SQLite database with tables for:
+- **tracks**: Railway infrastructure with realistic properties (gauge, max_speed, condition)
+- **stations**: Stations with capacity, platforms, and service facilities
+- **carriages**: Individual train cars with specifications (weight, capacity, brake_type)
+- **trains**: Train compositions linking locomotive + carriages to routes
+- **routes**: Route definitions with waypoints and schedules
+- **simulation_state**: Persistent simulation state (current time, time_scale)
+
+### Time-Accelerated Simulation
+- Configurable time_scale (e.g., 60:1 means 1 real second = 60 simulated seconds)
+- Trains progress through schedules based on simulation time
+- Delays calculated and propagated through remaining route
+- All state persists in database between server restarts
+
+### Service Organization
+- `app/services/other/simulation/` - All simulation services
+  - `track_service.py` - Track CRUD
+  - `station_service.py` - Station CRUD
+  - `carriage_service.py` - Vehicle management (locomotives, carriages, etc) - exposed via `/vehicle` endpoints
+  - `train_service.py` - Train composition management (groups vehicles together)
+  - `route_service.py` - Route CRUD
+  - `simulation_engine.py` - Schedule progression and state management
+  - `database.py` - SQLite setup and connection
+  - `models.py` - SQLAlchemy ORM models (Carriage model represents any vehicle)
