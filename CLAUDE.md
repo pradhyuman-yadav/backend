@@ -54,7 +54,7 @@ cp .env.example .env
 ### Running Locally
 ```bash
 # Development with reload
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 3002
 
 # Or run via main.py
 python app/main.py
@@ -67,7 +67,7 @@ docker build -t mlops-backend:latest .
 
 # Run container (assumes Ollama on host)
 docker run -d \
-  -p 8000:8000 \
+  -p 3002:3002 \
   -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
   -e API_KEY=your-secret-key \
   --name mlops-backend \
@@ -83,14 +83,14 @@ docker stop mlops-backend
 ### Testing & Validation
 ```bash
 # Test health endpoint (no auth required)
-curl http://localhost:8000/health
+curl http://localhost:3002/health
 
 # Test LLM health with auth
 curl -H "X-API-Key: your-secret-api-key-change-this" \
-  http://localhost:8000/api/llm/health
+  http://localhost:3002/api/llm/health
 
 # Test streaming generation
-curl -X POST http://localhost:8000/api/llm/stream \
+curl -X POST http://localhost:3002/api/llm/stream \
   -H "X-API-Key: your-secret-api-key-change-this" \
   -H "Content-Type: application/json" \
   -d '{"model":"mistral","prompt":"Hello","stream":true}'
@@ -182,4 +182,4 @@ All configuration from `pydantic_settings.BaseSettings` in `app/config.py`:
 - `POST /api/llm/stream` - Streaming text generation (NDJSON)
 - `GET /` - API info endpoint
 
-Interactive API docs: http://localhost:8000/docs (Swagger UI)
+Interactive API docs: http://localhost:3002/docs (Swagger UI)

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Server Configuration
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 3002
     debug: bool = False
 
     # CORS Configuration - comma-separated list from .env or default
