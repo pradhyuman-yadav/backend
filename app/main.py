@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import llm, simulation
+from app.routers.game_emulation import router as game_emulation_router
 from app.services.llm.ollama_service import ollama_service
 from app.services.other.simulation.database import init_db
 from app.utils.helpers import setup_logging
@@ -75,6 +76,7 @@ app.add_middleware(
 # Include routers
 app.include_router(llm.router)
 app.include_router(simulation.router)
+app.include_router(game_emulation_router)
 
 
 # Root endpoint

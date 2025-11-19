@@ -5,3 +5,9 @@ python-dotenv
 pydantic
 pydantic-settings
 sqlalchemy
+# Game Emulation
+gym-retro
+pillow
+numpy
+# WebSocket support (built-in to FastAPI but explicit for clarity)
+python-multipart
