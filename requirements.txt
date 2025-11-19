@@ -5,8 +5,9 @@ python-dotenv
 pydantic
 pydantic-settings
 sqlalchemy
-# Game Emulation
-gym-retro
+# Game Emulation - Modern, actively maintained alternatives
+pyboy>=1.6.0
+nes-py>=0.0.1
 pillow
 numpy
 # WebSocket support (built-in to FastAPI but explicit for clarity)

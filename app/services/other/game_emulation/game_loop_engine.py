@@ -209,7 +209,7 @@ class GameLoopEngine:
 
     async def reset_game(self) -> bool:
         """Reset current game to initial state."""
-        if emulator_service.env is None:
+        if emulator_service.emulator is None:
             logger.warning("No game loaded to reset")
             return False
 
@@ -232,7 +232,7 @@ class GameLoopEngine:
         Returns:
             True if successful
         """
-        if emulator_service.env is None:
+        if emulator_service.emulator is None:
             return False
 
         try:

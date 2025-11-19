@@ -166,7 +166,7 @@ async def reset_game(api_key: str = Depends(verify_api_key)):
     Returns:
         Status of reset operation
     """
-    if emulator_service.env is None:
+    if emulator_service.emulator is None:
         raise HTTPException(status_code=400, detail="No game currently loaded")
 
     success = await game_loop_engine.reset_game()
@@ -241,7 +241,7 @@ async def manual_step(minutes: int = 1, api_key: str = Depends(verify_api_key)):
     Returns:
         Status of manual step
     """
-    if emulator_service.env is None:
+    if emulator_service.emulator is None:
         raise HTTPException(status_code=400, detail="No game loaded")
 
     success = await game_loop_engine.manual_step(minutes)

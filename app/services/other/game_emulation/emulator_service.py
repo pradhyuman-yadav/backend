@@ -1,10 +1,10 @@
 """
-Emulator Service - Wraps game emulation using gym-retro.
+Emulator Service - Wraps game emulation using PyBoy (Game Boy) and nes-py (NES).
 Handles game loading, state management, and rendering.
 """
 import logging
 import numpy as np
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict, Any, Union
 from pathlib import Path
 from PIL import Image
 import io
@@ -13,27 +13,46 @@ import base64
 logger = logging.getLogger(__name__)
 
 try:
-    import retro
-    RETRO_AVAILABLE = True
+    from pyboy import PyBoy
+    PYBOY_AVAILABLE = True
 except ImportError:
-    RETRO_AVAILABLE = False
-    logger.warning("gym-retro not available - install with: pip install gym-retro")
+    PYBOY_AVAILABLE = False
+    logger.warning("pyboy not available - install with: pip install pyboy")
+
+try:
+    from nes_py.nes_environment import NESEnv
+    NESPY_AVAILABLE = True
+except ImportError:
+    NESPY_AVAILABLE = False
+    logger.warning("nes-py not available - install with: pip install nes-py")
 
 
 class EmulatorService:
-    """Service for managing game emulation."""
+    """Service for managing game emulation with PyBoy (Game Boy) and nes-py (NES)."""
 
     # Button mappings for different systems
     BUTTON_MAPPING = {
         'NES': ['A', 'B', 'START', 'SELECT', 'UP', 'DOWN', 'LEFT', 'RIGHT'],
-        'SNES': ['A', 'B', 'X', 'Y', 'START', 'SELECT', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'L', 'R'],
         'GB': ['A', 'B', 'START', 'SELECT', 'UP', 'DOWN', 'LEFT', 'RIGHT'],
-        'Genesis': ['A', 'B', 'C', 'START', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'Z', 'Y', 'X', 'MODE'],
+        'GBC': ['A', 'B', 'START', 'SELECT', 'UP', 'DOWN', 'LEFT', 'RIGHT'],
+    }
+
+    # NES action index mapping (nes-py uses 0-17 action space)
+    NES_ACTION_MAP = {
+        'RIGHT': 6,
+        'LEFT': 7,
+        'DOWN': 8,
+        'UP': 9,
+        'START': 3,
+        'SELECT': 2,
+        'A': 0,
+        'B': 1,
     }
 
     def __init__(self):
         """Initialize emulator service."""
-        self.env = None
+        self.emulator: Union[PyBoy, NESEnv, None] = None
+        self.emulator_type: Optional[str] = None  # 'pyboy' or 'nespy'
         self.current_game: Optional[str] = None
         self.current_system: Optional[str] = None
         self.last_screen: Optional[np.ndarray] = None
@@ -47,30 +66,41 @@ class EmulatorService:
 
         Args:
             rom_path: Full path to ROM file
-            system: Gaming system (NES, SNES, GB, etc)
+            system: Gaming system (NES, GB, GBC)
 
         Returns:
             True if game loaded successfully
         """
-        if not RETRO_AVAILABLE:
-            logger.error("gym-retro is not installed")
-            return False
-
         try:
-            # Close previous environment
-            if self.env is not None:
-                self.env.close()
+            # Close previous emulator
+            self.close()
 
-            # Get game name from ROM path (without extension)
             rom_file = Path(rom_path)
             game_name = rom_file.stem
 
-            # Load environment using retro
-            # The game parameter should be the ROM filename without extension
             logger.info(f"Loading game: {game_name} (system: {system})")
 
-            # Try to load with retro
-            self.env = retro.make(game_name, inttype=retro.Integrator.SUM)
+            # Load based on system type
+            if system == 'NES':
+                if not NESPY_AVAILABLE:
+                    logger.error("nes-py is not installed")
+                    return False
+                self.emulator = NESEnv(rom_path)
+                self.emulator_type = 'nespy'
+                logger.info(f"Loaded NES game with nes-py")
+
+            elif system in ['GB', 'GBC']:
+                if not PYBOY_AVAILABLE:
+                    logger.error("pyboy is not installed")
+                    return False
+                cgb_mode = (system == 'GBC')
+                self.emulator = PyBoy(rom_path, cgb=cgb_mode)
+                self.emulator_type = 'pyboy'
+                logger.info(f"Loaded Game Boy game with PyBoy (CGB: {cgb_mode})")
+
+            else:
+                logger.error(f"Unsupported system: {system}")
+                return False
 
             self.current_game = rom_path
             self.current_system = system
@@ -85,7 +115,7 @@ class EmulatorService:
 
         except Exception as e:
             logger.error(f"Failed to load game {rom_path}: {str(e)}")
-            self.env = None
+            self.emulator = None
             self.is_running = False
             return False
 
@@ -96,13 +126,19 @@ class EmulatorService:
         Returns:
             Initial screen as numpy array, or None if failed
         """
-        if self.env is None:
+        if self.emulator is None:
             logger.warning("Cannot reset: no game loaded")
             return None
 
         try:
-            screen, _ = self.env.reset()
-            self.last_screen = screen
+            if self.emulator_type == 'nespy':
+                screen, _ = self.emulator.reset()
+                self.last_screen = screen
+            elif self.emulator_type == 'pyboy':
+                self.emulator.reset_game()
+                screen = self._get_pyboy_screen()
+                self.last_screen = screen
+
             self.frame_count = 0
             logger.info("Game reset successfully")
             return screen
@@ -136,34 +172,40 @@ class EmulatorService:
         Returns:
             Tuple of (screen, info_dict)
         """
-        if self.env is None:
+        if self.emulator is None:
             logger.warning("Cannot step: no game loaded")
             return None, {}
 
         try:
-            # Convert button names to action vector
-            action = self._build_action_vector(actions or [])
+            if self.emulator_type == 'nespy':
+                # nes-py step
+                action = self._build_nes_action(actions or [])
+                screen, reward, terminated, truncated, info = self.emulator.step(action)
+                self.last_screen = screen
+                self.frame_count += 1
+                done = terminated or truncated
 
-            # Step environment
-            screen, reward, terminated, truncated, info = self.env.step(action)
-            self.last_screen = screen
-            self.frame_count += 1
+                return screen, {
+                    'reward': reward,
+                    'done': done,
+                    'terminated': terminated,
+                    'truncated': truncated,
+                    'frame_count': self.frame_count,
+                    **info
+                }
 
-            # For gym API compatibility
-            done = terminated or truncated
+            elif self.emulator_type == 'pyboy':
+                # PyBoy step
+                self._apply_pyboy_buttons(actions or [])
+                self.emulator.tick()
+                screen = self._get_pyboy_screen()
+                self.last_screen = screen
+                self.frame_count += 1
 
-            # Log periodically
-            if self.frame_count % 300 == 0:
-                logger.debug(f"Frame {self.frame_count}: reward={reward}, done={done}")
-
-            return screen, {
-                'reward': reward,
-                'done': done,
-                'terminated': terminated,
-                'truncated': truncated,
-                'frame_count': self.frame_count,
-                **info
-            }
+                return screen, {
+                    'frame_count': self.frame_count,
+                    'done': False,
+                }
 
         except Exception as e:
             logger.error(f"Failed to step game: {str(e)}")
@@ -250,38 +292,74 @@ class EmulatorService:
 
     def close(self) -> None:
         """Close the emulator."""
-        if self.env is not None:
+        if self.emulator is not None:
             try:
-                self.env.close()
+                if self.emulator_type == 'pyboy':
+                    self.emulator.stop()
+                elif self.emulator_type == 'nespy':
+                    self.emulator.close()
             except Exception as e:
                 logger.warning(f"Error closing emulator: {e}")
-        self.env = None
+        self.emulator = None
         self.is_running = False
         logger.info("Emulator closed")
 
-    def _build_action_vector(self, button_names: list) -> np.ndarray:
+    def _get_pyboy_screen(self) -> np.ndarray:
+        """Get screen from PyBoy as numpy array."""
+        if self.emulator is None or self.emulator_type != 'pyboy':
+            return np.zeros((144, 160, 3), dtype=np.uint8)
+
+        try:
+            # PyBoy returns screen as (144, 160, 3) RGB
+            return np.array(self.emulator.screen.ndarray, dtype=np.uint8)
+        except Exception as e:
+            logger.error(f"Failed to get PyBoy screen: {e}")
+            return np.zeros((144, 160, 3), dtype=np.uint8)
+
+    def _apply_pyboy_buttons(self, button_names: list) -> None:
+        """Apply button presses to PyBoy."""
+        if self.emulator is None or self.emulator_type != 'pyboy':
+            return
+
+        try:
+            # Release all buttons first
+            self.emulator.button_release('a')
+            self.emulator.button_release('b')
+            self.emulator.button_release('start')
+            self.emulator.button_release('select')
+            self.emulator.button_release('up')
+            self.emulator.button_release('down')
+            self.emulator.button_release('left')
+            self.emulator.button_release('right')
+
+            # Press requested buttons
+            for btn in button_names:
+                btn_lower = btn.lower()
+                if btn_lower in ['a', 'b', 'start', 'select', 'up', 'down', 'left', 'right']:
+                    self.emulator.button_press(btn_lower)
+        except Exception as e:
+            logger.warning(f"Error applying PyBoy buttons: {e}")
+
+    def _build_nes_action(self, button_names: list) -> int:
         """
-        Convert button names to action vector for emulator.
+        Convert button names to nes-py action index.
 
         Args:
             button_names: List of button names (e.g., ['A', 'RIGHT'])
 
         Returns:
-            Action vector as numpy array
+            Action index (0-17 for nes-py)
         """
-        if self.env is None:
-            return np.array([])
+        # nes-py action space is 0-17
+        # For simplicity, map first button to action
+        if not button_names:
+            return 0
 
-        button_map = self.get_button_map()
-        action = np.zeros(len(button_map), dtype=np.int32)
+        first_btn = button_names[0].upper()
+        if first_btn in self.NES_ACTION_MAP:
+            return self.NES_ACTION_MAP[first_btn]
 
-        for btn in button_names:
-            if btn in button_map:
-                action[button_map[btn]] = 1
-            else:
-                logger.warning(f"Unknown button: {btn}")
-
-        return action
+        return 0
 
 
 # Global singleton instance

@@ -4,16 +4,17 @@ Autonomous arcade game playing with AI-powered decision making using llava-phi m
 
 ## Overview
 
-This system enables a backend service to autonomously play classic arcade games (NES, SNES, Game Boy, Genesis, SMS, etc.) with game states and controls sent to the llava-phi language model for intelligent decision-making. The model analyzes game screens and generates optimal button inputs to progress and win games.
+This system enables a backend service to autonomously play classic arcade games (NES, Game Boy, Game Boy Color) with game states and controls sent to the llava-phi language model for intelligent decision-making. The model analyzes game screens and generates optimal button inputs to progress and win games.
 
 **Key Features:**
-- 🎮 Multi-system emulation support (NES, SNES, Game Boy, Genesis, SMS)
+- 🎮 Multi-system emulation support (NES via nes-py, Game Boy/GBC via PyBoy)
 - 🤖 LLM-powered AI agent (llava-phi via Ollama)
 - 📡 Real-time WebSocket streaming of gameplay to frontend
 - 🎬 Frame-by-frame visual and model decision streaming
 - 🔄 Independent of frontend - game continues playing even if frontend is inactive
 - ⚡ Per-frame AI decision making (analyzable actions)
 - 🔧 Async/await architecture for high performance
+- 📦 Modern, actively-maintained emulation libraries (no deprecated gym-retro)
 
 ## Architecture
 
@@ -78,15 +79,16 @@ rom_manager.validate_rom(rom_path)                # Verify ROM accessibility
 
 ### 2. Emulator Service (`app/services/other/game_emulation/emulator_service.py`)
 
-Wraps game emulation using gym-retro library.
+Wraps game emulation using PyBoy (Game Boy/GBC) and nes-py (NES).
 
 **Features:**
-- Load and manage game ROMs
+- Load and manage game ROMs for NES, GB, GBC
 - Frame-by-frame emulation stepping
 - Screen capture and encoding (base64 JPEG)
 - Memory dump extraction (optional)
 - Button/control mapping per system
 - Automatic frame tracking
+- Unified API for multiple emulator backends
 
 **Key Methods:**
 ```python
@@ -278,7 +280,8 @@ pip install -r requirements.txt
 ```
 
 **New dependencies added:**
-- `gym-retro` - Multi-system game emulation
+- `pyboy>=1.6.0` - Game Boy / Game Boy Color emulation
+- `nes-py>=0.0.1` - NES emulation
 - `pillow` - Image processing for screen captures
 - `numpy` - Numerical operations
 - `python-multipart` - File upload support
@@ -498,14 +501,11 @@ app/schemas/
 
 ## Supported Systems
 
-| System | Extension | Status |
-|--------|-----------|--------|
-| NES | .nes | ✅ Supported |
-| SNES | .snes, .rom | ✅ Supported |
-| Game Boy | .gb, .gbc | ✅ Supported |
-| Game Boy Advance | .gba | ✅ Supported |
-| Sega Genesis | .gen, .md | ✅ Supported |
-| SMS | .sms | ✅ Supported |
+| System | Extension | Library | Status |
+|--------|-----------|---------|--------|
+| NES | .nes | nes-py | ✅ Supported |
+| Game Boy | .gb | PyBoy | ✅ Supported |
+| Game Boy Color | .gbc | PyBoy | ✅ Supported |
 
 ## Example Game ROMs
 
@@ -521,9 +521,11 @@ Test with these publicly available ROM files:
 ```
 Error: Failed to load game in emulator
 ```
-- Verify ROM file format is correct
+- Verify ROM file format is correct (.nes for NES, .gb/.gbc for Game Boy)
 - Check emulator system detection
-- Ensure gym-retro is installed: `pip install gym-retro`
+- Ensure pyboy and nes-py are installed: `pip install pyboy nes-py`
+- For NES: Ensure ROM is in standard iNES format
+- For Game Boy: ROM should be in standard Game Boy format
 
 ### Model Not Responding
 ```

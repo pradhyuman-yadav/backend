@@ -10,30 +10,20 @@ logger = logging.getLogger(__name__)
 
 # Supported ROM formats and their corresponding systems
 ROM_SIGNATURES = {
-    b'NES\x1a': 'NES',           # NES ROM header
-    b'SNES': 'SNES',             # SNES ROM header (or check file size)
-    b'GAME BOY': 'GB',            # Game Boy header
-    b'GENESIS': 'Genesis',        # Sega Genesis
-    b'SMS': 'SMS',               # Sega Master System
-    b'\x37\x80\x34\x12': 'N64',  # N64 ROM magic
+    b'NES\x1a': 'NES',           # NES ROM header (iNES format)
 }
 
 # File extension to system mapping (fallback)
+# Game Boy/GBC detection by extension since signature matching is unreliable
 EXTENSION_MAPPING = {
     '.nes': 'NES',
-    '.snes': 'SNES',
-    '.rom': 'SNES',
     '.gb': 'GB',
-    '.gbc': 'GB',
-    '.gba': 'GBA',
-    '.gen': 'Genesis',
-    '.sms': 'SMS',
-    '.z64': 'N64',
-    '.n64': 'N64',
+    '.gbc': 'GBC',               # Game Boy Color
+    '.gbl': 'GB',                # Game Boy Link
 }
 
-# Supported systems in gym-retro
-SUPPORTED_SYSTEMS = ['NES', 'SNES', 'GB', 'Genesis', 'SMS']
+# Supported systems (PyBoy for GB/GBC, nes-py for NES)
+SUPPORTED_SYSTEMS = ['NES', 'GB', 'GBC']
 
 
 class ROMManagerService:
@@ -62,27 +52,23 @@ class ROMManagerService:
             filename: ROM filename
 
         Returns:
-            System name (NES, SNES, GB, etc.)
+            System name (NES, GB, GBC)
         """
-        # Try signature matching
+        # Try signature matching first
         for signature, system in ROM_SIGNATURES.items():
             if rom_data.startswith(signature):
                 logger.info(f"Detected {system} by signature")
                 return system
 
-        # Try extension matching
+        # Try extension matching (more reliable for Game Boy)
         ext = Path(filename).suffix.lower()
         if ext in EXTENSION_MAPPING:
             system = EXTENSION_MAPPING[ext]
             logger.info(f"Detected {system} by extension {ext}")
             return system
 
-        # Default based on file size (heuristic for SNES vs NES)
-        if len(rom_data) > 200_000:
-            logger.info("Detected SNES by file size (>200KB)")
-            return "SNES"
-
-        logger.info("Defaulting to NES (unknown ROM)")
+        # Default to NES if no match
+        logger.info(f"Unknown ROM format {filename}, defaulting to NES")
         return "NES"
 
     def upload_rom(self, rom_data: bytes, filename: str) -> Tuple[str, str, int]:
